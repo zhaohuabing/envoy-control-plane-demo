@@ -1,5 +1,8 @@
 .DEFAULT_GOAL	:= build
 
+DOCKER_TMP?=./docker_temp/
+DOCKER_TAG?=zhaohuabing/envoy-control-plane-demo:latest
+
 #------------------------------------------------------------------------------
 # Variables
 #------------------------------------------------------------------------------
@@ -94,3 +97,13 @@ example: $(BINDIR)/example
 docker_tests:
 	docker build --pull -f Dockerfile.ci . -t gcp_ci && \
 	docker run -v $$(pwd):/go-control-plane $$(tty -s && echo "-it" || echo) gcp_ci /bin/bash -c /go-control-plane/build/do_ci.sh
+
+.PHONY: docker
+docker-build:
+	CGO_ENABLED=0 GOOS=linux go build -o ./bin/example internal/example/main/main.go
+	rm -rf $(DOCKER_TMP)
+	mkdir $(DOCKER_TMP)
+	cp ./docker/Dockerfile $(DOCKER_TMP)
+	cp ./bin/example  $(DOCKER_TMP)
+	docker build -t $(DOCKER_TAG) $(DOCKER_TMP)
+

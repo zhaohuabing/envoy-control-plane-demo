@@ -16,3 +16,4 @@ examples/dyplomat/dyplomat
 *_gen_test.go
 
 /envoy*.log
+/docker_temp

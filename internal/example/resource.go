@@ -33,73 +33,128 @@ import (
 )
 
 const (
-	ClusterName  = "example_proxy_cluster"
-	RouteName    = "local_route"
-	ListenerName = "listener_0"
-	ListenerPort = 10000
-	UpstreamHost = "www.envoyproxy.io"
-	UpstreamPort = 80
+	AllClusterName     = "echo-service"
+	Subset1ClusterName = "echo-service-subset1"
+	Subset2ClusterName = "echo-service-subset2"
+	RouteName          = "echo-service"
+	ListenerName       = "test-listener"
+	ListenerPort       = 8080
+	UpstreamHost1      = "instance1"
+	UpstreamHost2      = "instance2"
+	UpstreamHost3      = "instance3"
+	UpstreamHost4      = "instance4"
+	UpstreamPort       = 5678
 )
 
-func makeCluster(clusterName string) *cluster.Cluster {
-	return &cluster.Cluster{
-		Name:                 clusterName,
-		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(clusterName),
-		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
+func makeCluster() []types.Resource {
+	return []types.Resource{
+		&cluster.Cluster{
+			Name:                 AllClusterName,
+			ConnectTimeout:       durationpb.New(5 * time.Second),
+			ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+			LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+			LoadAssignment: makeEndpoint(AllClusterName, []string{UpstreamHost1,
+				UpstreamHost2, UpstreamHost3, UpstreamHost4}),
+			DnsLookupFamily: cluster.Cluster_V4_ONLY,
+		},
+		&cluster.Cluster{
+			Name:                 Subset1ClusterName,
+			ConnectTimeout:       durationpb.New(5 * time.Second),
+			ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+			LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+			LoadAssignment: makeEndpoint(Subset1ClusterName, []string{UpstreamHost1,
+				UpstreamHost2}),
+			DnsLookupFamily: cluster.Cluster_V4_ONLY,
+		},
+		&cluster.Cluster{
+			Name:                 Subset2ClusterName,
+			ConnectTimeout:       durationpb.New(5 * time.Second),
+			ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+			LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+			LoadAssignment: makeEndpoint(Subset2ClusterName, []string{UpstreamHost3,
+				UpstreamHost4}),
+			DnsLookupFamily: cluster.Cluster_V4_ONLY,
+		},
 	}
 }
 
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
-	return &endpoint.ClusterLoadAssignment{
+func makeEndpoint(clusterName string, upstreamHosts []string) *endpoint.ClusterLoadAssignment {
+	endpoints := &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
 		Endpoints: []*endpoint.LocalityLbEndpoints{{
-			LbEndpoints: []*endpoint.LbEndpoint{{
-				HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-					Endpoint: &endpoint.Endpoint{
-						Address: &core.Address{
-							Address: &core.Address_SocketAddress{
-								SocketAddress: &core.SocketAddress{
-									Protocol: core.SocketAddress_TCP,
-									Address:  UpstreamHost,
-									PortSpecifier: &core.SocketAddress_PortValue{
-										PortValue: UpstreamPort,
-									},
+			LbEndpoints: []*endpoint.LbEndpoint{},
+		}},
+	}
+	for i := 0; i < len(upstreamHosts); i++ {
+		endpoints.Endpoints[0].LbEndpoints = append(endpoints.Endpoints[0].LbEndpoints, &endpoint.LbEndpoint{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Address: upstreamHosts[i],
+								PortSpecifier: &core.SocketAddress_PortValue{
+									PortValue: UpstreamPort,
 								},
 							},
 						},
 					},
 				},
-			}},
-		}},
+			},
+		})
 	}
+	return endpoints
 }
 
-func makeRoute(routeName string, clusterName string) *route.RouteConfiguration {
+func makeRoute(routeName string) *route.RouteConfiguration {
 	return &route.RouteConfiguration{
 		Name: routeName,
 		VirtualHosts: []*route.VirtualHost{{
-			Name:    "local_service",
+			Name:    "echo-service",
 			Domains: []string{"*"},
-			Routes: []*route.Route{{
-				Match: &route.RouteMatch{
-					PathSpecifier: &route.RouteMatch_Prefix{
-						Prefix: "/",
-					},
-				},
-				Action: &route.Route_Route{
-					Route: &route.RouteAction{
-						ClusterSpecifier: &route.RouteAction_Cluster{
-							Cluster: clusterName,
-						},
-						HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-							HostRewriteLiteral: UpstreamHost,
+			Routes: []*route.Route{
+				{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: "/subset1",
 						},
 					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: Subset1ClusterName,
+							},
+						},
+					},
 				},
-			}},
+				{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: "/subset2",
+						},
+					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: Subset2ClusterName,
+							},
+						},
+					},
+				},
+				{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: "/",
+						},
+					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: "echo-service",
+							},
+						},
+					},
+				}},
 		}},
 	}
 }
@@ -131,8 +186,8 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
-					Protocol: core.SocketAddress_TCP,
-					Address:  "0.0.0.0",
+
+					Address: "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
 						PortValue: ListenerPort,
 					},
@@ -160,7 +215,7 @@ func makeConfigSource() *core.ConfigSource {
 			SetNodeOnFirstMessageOnly: true,
 			GrpcServices: []*core.GrpcService{{
 				TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
-					EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: "xds_cluster"},
+					EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: "xds-server"},
 				},
 			}},
 		},
@@ -171,8 +226,8 @@ func makeConfigSource() *core.ConfigSource {
 func GenerateSnapshot() *cache.Snapshot {
 	snap, _ := cache.NewSnapshot("1",
 		map[resource.Type][]types.Resource{
-			resource.ClusterType:  {makeCluster(ClusterName)},
-			resource.RouteType:    {makeRoute(RouteName, ClusterName)},
+			resource.ClusterType:  makeCluster(),
+			resource.RouteType:    {makeRoute(RouteName)},
 			resource.ListenerType: {makeHTTPListener(ListenerName, RouteName)},
 		},
 	)
