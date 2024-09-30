@@ -324,6 +324,7 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 			}
 		}
 	} else {
+		cache.log.Debugf("non ADS mode, responding to all delta watches")
 		for id, watch := range info.deltaWatches {
 			res, err := cache.respondDelta(
 				ctx,
