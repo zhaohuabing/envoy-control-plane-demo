@@ -301,10 +301,12 @@ func (cache *snapshotCache) respondDeltaWatches(ctx context.Context, info *statu
 	// If ADS is enabled we need to order response delta watches so we guarantee
 	// sending them in the correct order. Go's default implementation
 	// of maps are randomized order when ranged over.
+	now := time.Now().Nanosecond()
 	if cache.ads {
 		info.orderResponseDeltaWatches()
 		for _, key := range info.orderedDeltaWatches {
 			watch := info.deltaWatches[key.ID]
+			cache.log.Debugf("%d respond delta watch %d %s", now, key.ID, watch.Request.GetTypeUrl())
 			res, err := cache.respondDelta(
 				ctx,
 				snapshot,
